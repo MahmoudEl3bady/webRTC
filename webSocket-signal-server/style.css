@@ -37,3 +37,32 @@ textarea {
     width: 100%;
   }
 }
+
+.room-name {
+  display: flex;
+  gap: 10px;
+  width: 50%;
+  justify-content: center;
+  align-items: center;
+}
+
+#room-name-input {
+  padding: 10px 15px;
+  border-radius: 5px;
+  width: 100%;
+}
+
+#room-name-btn {
+  padding: 10px 15px;
+  background-color: blue;
+  color: white;
+  font-weight: bold;
+  border-radius: 5px;
+  cursor: pointer;
+  border: none;
+  width: 150px;
+}
+
+#room-name-btn:hover {
+  background-color: rgb(44, 44, 216);
+}

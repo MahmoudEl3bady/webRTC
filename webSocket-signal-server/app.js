@@ -1,4 +1,14 @@
 let localStream, remoteStream, peerConnection;
+
+let isAudioMuted = false;
+let isVideoMuted = false;
+let isScreenSharing = false;
+
+const micBtn = document.getElementById("mute-audio");
+const cameraBtn = document.getElementById("mute-video");
+const callBtn = document.getElementById("end-call");
+const userVideo1 = document.getElementById("user-1");
+
 const socket = new WebSocket("ws://localhost:8080");
 const rtcServers = {
   iceServers: [
@@ -8,17 +18,26 @@ const rtcServers = {
   ],
 };
 
-let room = null;
 let isInitialized = false;
+const roomNameInput = document.getElementById("room-name-input");
+const roomNameBtn = document.getElementById("room-name-btn");
 
-function joinRoom() {
-  room = prompt("Enter room name:");
+let room = null;
+
+roomNameBtn.addEventListener("click", () => {
+  room = roomNameInput.value;
+  roomNameInput.value = "";
+  joinRoom(room);
+  initCall(true);
+});
+
+function joinRoom(room) {
   if (!room) {
-    alert("Room name is required!");
+    console.log("Please Enter a Room to continue!!");
     return;
   }
-
   if (socket.readyState === WebSocket.OPEN) {
+    console.log("JOINING ROOOM", room);
     socket.send(JSON.stringify({ type: "join", room }));
     console.log(`Joining room: ${room}`);
   } else {
@@ -32,7 +51,7 @@ function joinRoom() {
 
 socket.onopen = () => {
   console.log("WebSocket connected");
-  joinRoom();
+  // joinRoom();
 };
 
 socket.onmessage = async (evt) => {
@@ -71,12 +90,6 @@ socket.onmessage = async (evt) => {
           console.log(
             "Peer connection not ready for ICE candidate, queuing..."
           );
-          // Store candidate for later if peer connection isn't ready
-          setTimeout(() => {
-            if (peerConnection && peerConnection.remoteDescription) {
-              peerConnection.addIceCandidate(new RTCIceCandidate(payload));
-            }
-          }, 1000);
         }
       }
     }
@@ -110,10 +123,10 @@ function sendSignal(type, data) {
 
 async function initCall(isCaller) {
   try {
-    if (isInitialized) {
-      console.log("Call already initialized");
-      return;
-    }
+    // if (isInitialized) {
+    //   console.log("Call already initialized");
+    //   return;
+    // }
 
     console.log(`Initializing call as ${isCaller ? "caller" : "callee"}`);
     isInitialized = true;
@@ -124,7 +137,6 @@ async function initCall(isCaller) {
       audio: true,
     });
 
-    const userVideo1 = document.getElementById("user-1");
     if (userVideo1) {
       userVideo1.srcObject = localStream;
       userVideo1.muted = true;
@@ -176,6 +188,7 @@ async function initCall(isCaller) {
       sendSignal("offer", offer);
       console.log("Offer sent");
     }
+    setupControls();
   } catch (error) {
     console.error("Error initializing call:", error);
     isInitialized = false;
@@ -192,4 +205,50 @@ async function initCall(isCaller) {
   }
 }
 
-initCall(true);
+// initCall(true);
+
+const toggleAudio = () => {
+  const audioTrack = localStream.getAudioTracks()[0];
+  if (audioTrack) {
+    audioTrack.enabled = !audioTrack.enabled;
+    isAudioMuted = !audioTrack.enabled;
+
+    micBtn.textContent = isAudioMuted ? "Unmute Audio" : "Mute Audio";
+    micBtn.classList.toggle("muted", isAudioMuted);
+  }
+};
+
+const toggleVideo = () => {
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (videoTrack) {
+    videoTrack.enabled = !videoTrack.enabled;
+    isVideoMuted = !videoTrack.enabled;
+
+    cameraBtn.textContent = isVideoMuted ? "Open Camera" : "Close Camera";
+    cameraBtn.classList.toggle("muted", isVideoMuted);
+  }
+};
+
+const endCall = () => {
+  if (localStream) {
+    localStream.getTracks().forEach((tr) => tr.stop);
+  }
+  if (peerConnection) {
+    peerConnection.close();
+  }
+
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.close();
+  }
+
+  document.getElementById("user-1").srcObject = null;
+  document.getElementById("user-2").srcObject = null;
+
+  // location.reload();
+};
+
+function setupControls() {
+  micBtn.addEventListener("click", toggleAudio);
+  cameraBtn.addEventListener("click", toggleVideo);
+  callBtn.addEventListener("click", endCall);
+}
