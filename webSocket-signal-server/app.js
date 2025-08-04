@@ -1,5 +1,5 @@
 let localStream, remoteStream, peerConnection;
-
+let screenStream;
 let isAudioMuted = false;
 let isVideoMuted = false;
 let isScreenSharing = false;
@@ -8,6 +8,9 @@ const micBtn = document.getElementById("mute-audio");
 const cameraBtn = document.getElementById("mute-video");
 const callBtn = document.getElementById("end-call");
 const userVideo1 = document.getElementById("user-1");
+const shareScreenBtn = document.getElementById("share-screen");
+const roomNameSection = document.getElementById("RoomName-section");
+const currentRoomHeader = document.getElementById("curr-room");
 
 const socket = new WebSocket("ws://localhost:8080");
 const rtcServers = {
@@ -23,12 +26,14 @@ const roomNameInput = document.getElementById("room-name-input");
 const roomNameBtn = document.getElementById("room-name-btn");
 
 let room = null;
+let queuedIceCandidates = [];
 
 roomNameBtn.addEventListener("click", () => {
   room = roomNameInput.value;
   roomNameInput.value = "";
+  roomNameSection.style.display = "none";
+  currentRoomHeader.innerText = `Room: ${room}`;
   joinRoom(room);
-  initCall(true);
 });
 
 function joinRoom(room) {
@@ -37,7 +42,7 @@ function joinRoom(room) {
     return;
   }
   if (socket.readyState === WebSocket.OPEN) {
-    console.log("JOINING ROOOM", room);
+    console.log("JOINING ROOM", room);
     socket.send(JSON.stringify({ type: "join", room }));
     console.log(`Joining room: ${room}`);
   } else {
@@ -51,7 +56,6 @@ function joinRoom(room) {
 
 socket.onopen = () => {
   console.log("WebSocket connected");
-  // joinRoom();
 };
 
 socket.onmessage = async (evt) => {
@@ -74,6 +78,9 @@ socket.onmessage = async (evt) => {
         await peerConnection.setRemoteDescription(
           new RTCSessionDescription(payload)
         );
+
+        await processQueuedIceCandidates();
+
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         sendSignal("answer", answer);
@@ -82,14 +89,15 @@ socket.onmessage = async (evt) => {
         await peerConnection.setRemoteDescription(
           new RTCSessionDescription(payload)
         );
+
+        await processQueuedIceCandidates();
       } else if (signalType === "candidate") {
         console.log("Received ICE candidate");
         if (peerConnection && peerConnection.remoteDescription) {
           await peerConnection.addIceCandidate(new RTCIceCandidate(payload));
         } else {
-          console.log(
-            "Peer connection not ready for ICE candidate, queuing..."
-          );
+          console.log("Queuing ICE candidate until remote description is set");
+          queuedIceCandidates.push(payload);
         }
       }
     }
@@ -106,6 +114,18 @@ socket.onclose = () => {
   console.log("WebSocket connection closed");
 };
 
+async function processQueuedIceCandidates() {
+  for (const candidateData of queuedIceCandidates) {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
+      console.log("Added queued ICE candidate");
+    } catch (error) {
+      console.error("Error adding queued ICE candidate:", error);
+    }
+  }
+  queuedIceCandidates = [];
+}
+
 function sendSignal(type, data) {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(
@@ -121,12 +141,14 @@ function sendSignal(type, data) {
   }
 }
 
+const shareScreenVideo = document.getElementById("screen-share");
+
 async function initCall(isCaller) {
   try {
-    // if (isInitialized) {
-    //   console.log("Call already initialized");
-    //   return;
-    // }
+    if (isInitialized) {
+      console.log("Call already initialized");
+      return;
+    }
 
     console.log(`Initializing call as ${isCaller ? "caller" : "callee"}`);
     isInitialized = true;
@@ -134,7 +156,7 @@ async function initCall(isCaller) {
     console.log("Getting user media...");
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
-      audio: true,
+      audio: false,
     });
 
     if (userVideo1) {
@@ -149,6 +171,7 @@ async function initCall(isCaller) {
     const userVideo2 = document.getElementById("user-2");
     if (userVideo2) {
       userVideo2.srcObject = remoteStream;
+      userVideo2.muted = true;
     }
 
     console.log("Adding local tracks...");
@@ -157,11 +180,45 @@ async function initCall(isCaller) {
       console.log(`Added ${track.kind} track`);
     });
 
+    // Replace your existing peerConnection.ontrack handler with this:
     peerConnection.ontrack = (evt) => {
       console.log("Received remote track:", evt.track.kind);
-      evt.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track);
-      });
+      const userVideo2 = document.getElementById("user-2");
+      const shareScreenVideo = document.getElementById("screen-share");
+
+      if (evt.streams[0]) {
+        // Check if this is likely a screen share based on track constraints
+        const videoTrack = evt.streams[0].getVideoTracks()[0];
+
+        if (videoTrack) {
+          const settings = videoTrack.getSettings();
+
+          // Screen shares typically have larger dimensions
+          if (settings.width >= 1920 || settings.height >= 1080) {
+            // This is likely a screen share - show in screen-share video
+            if (shareScreenVideo) {
+              shareScreenVideo.srcObject = evt.streams[0];
+              shareScreenVideo.style.display = "block";
+            }
+
+            // Keep camera feed in user-2 if available, or hide it
+            if (userVideo2) {
+              userVideo2.style.display = "none";
+            }
+          } else {
+            // This is regular camera feed
+            if (userVideo2) {
+              userVideo2.srcObject = evt.streams[0];
+              userVideo2.style.display = "block";
+            }
+
+            // Hide screen share video if it was showing
+            if (shareScreenVideo) {
+              shareScreenVideo.style.display = "none";
+            }
+          }
+        }
+      }
     };
 
     peerConnection.onicecandidate = (event) => {
@@ -205,8 +262,6 @@ async function initCall(isCaller) {
   }
 }
 
-// initCall(true);
-
 const toggleAudio = () => {
   const audioTrack = localStream.getAudioTracks()[0];
   if (audioTrack) {
@@ -219,6 +274,7 @@ const toggleAudio = () => {
 };
 
 const toggleVideo = () => {
+  console.log("Get video Tracks", localStream.getVideoTracks());
   const videoTrack = localStream.getVideoTracks()[0];
   if (videoTrack) {
     videoTrack.enabled = !videoTrack.enabled;
@@ -231,7 +287,10 @@ const toggleVideo = () => {
 
 const endCall = () => {
   if (localStream) {
-    localStream.getTracks().forEach((tr) => tr.stop);
+    localStream.getTracks().forEach((tr) => tr.stop());
+  }
+  if (remoteStream) {
+    remoteStream.getTracks().forEach((tr) => tr.stop());
   }
   if (peerConnection) {
     peerConnection.close();
@@ -244,11 +303,67 @@ const endCall = () => {
   document.getElementById("user-1").srcObject = null;
   document.getElementById("user-2").srcObject = null;
 
-  // location.reload();
+  isInitialized = false;
+  queuedIceCandidates = [];
 };
 
 function setupControls() {
   micBtn.addEventListener("click", toggleAudio);
   cameraBtn.addEventListener("click", toggleVideo);
   callBtn.addEventListener("click", endCall);
+}
+async function startScreenShare() {
+  try {
+    // Get screen share stream
+    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: false,
+    });
+
+    const screenTrack = screenStream.getVideoTracks()[0];
+
+    const videoSender = peerConnection
+      .getSenders()
+      .find((sender) => sender.track && sender.track.kind === "video");
+
+    if (videoSender) {
+      await videoSender.replaceTrack(screenTrack);
+
+      const shareScreenVideo = document.getElementById("screen-share");
+      if (shareScreenVideo) {
+        shareScreenVideo.srcObject = screenStream;
+        shareScreenVideo.style.display = "block";
+      }
+
+      isScreenSharing = true;
+
+      screenTrack.onended = async () => {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+
+        const cameraTrack = cameraStream.getVideoTracks()[0];
+
+        await videoSender.replaceTrack(cameraTrack);
+
+        localStream = cameraStream;
+
+        const userVideo1 = document.getElementById("user-1");
+        if (userVideo1) {
+          userVideo1.srcObject = localStream;
+        }
+
+        if (shareScreenVideo) {
+          shareScreenVideo.srcObject = null;
+          shareScreenVideo.style.display = "none";
+        }
+
+        isScreenSharing = false;
+      };
+    }
+  } catch (error) {
+    console.error("Error starting screen share:", error);
+    alert("Screen sharing failed: " + error.message);
+  }
 }

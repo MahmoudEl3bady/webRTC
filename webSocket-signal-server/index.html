@@ -1,37 +1,42 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <title>WebRTC 1</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" type="text/css" media="screen" href="style.css" />
-  </head>
-  <body>
-    <div id="intro-container">
-      <h2>WebRTC, With WebSockets Signaling Server </h2>
-      
 
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>WebRTC 1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" media="screen" href="style.css" />
+</head>
+
+<body>
+  <div id="intro-container">
+    <h2>WebRTC, With WebSockets Signaling Server</h2>
+
+    <section id="RoomName-section">
       <h3>Enter Your Room name</h3>
-        <div class="room-name">
-          <input type="text" id="room-name-input" autofocus="true">
-          <button id="room-name-btn">Submit</button>
-        </div>
-    
-      <div id="videos">
+      <div class="room-name">
+        <input type="text" id="room-name-input" autofocus="true">
+        <button id="room-name-btn">Submit</button>
+      </div>
+    </section>
+    <div class="shredScreen">
+      <video id="screen-share" autoplay muted playsinline></video>
+    </div>
+
+
+    <h2 id="curr-room"></h2>
+    <div id="videos">
       <video class="video-player" id="user-1" autoplay playsinline></video>
       <video class="video-player" id="user-2" autoplay playsinline></video>
     </div>
-    
 
-    
-
- <div id="call-controls">
-  <button id="mute-audio">Mute Audio</button>
-  <button id="mute-video">Mute Video</button>
-  <button id="end-call">End Call</button>
-  <button id="share-screen">Share Screen</button>
-</div>
-  </body>
-  <script src="app.js"></script>
+    <div id="call-controls">
+      <button id="mute-audio">Mute Audio</button>
+      <button id="mute-video">Mute Video</button>
+      <button id="end-call">End Call</button>
+      <button id="share-screen" onclick="startScreenShare()">Share Screen</button>
+    </div>
+</body>
+<script src="app.js"></script>
 </html>

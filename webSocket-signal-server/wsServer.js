@@ -31,11 +31,10 @@ wss.on("connection", (ws) => {
 
         if (rooms[room].length === 2) {
           console.log(`Room ${room} is full, notifying clients to start call`);
-          rooms[room].forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: "ready" }));
-            }
-          });
+          const caller = rooms[room][0];
+          if (caller.readyState === WebSocket.OPEN) {
+            caller.send(JSON.stringify({ type: "ready" }));
+          }
         } else if (rooms[room].length > 2) {
           console.log(`Room ${room} is full, rejecting new client`);
           ws.send(
