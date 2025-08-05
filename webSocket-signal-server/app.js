@@ -4,13 +4,20 @@ let isAudioMuted = false;
 let isVideoMuted = false;
 let isScreenSharing = false;
 
+const roomEntry = document.getElementById("room-entry");
+const conference = document.getElementById("conference");
+const roomNameInput = document.getElementById("room-name-input");
+const roomNameBtn = document.getElementById("room-name-btn");
+const currentRoom = document.getElementById("current-room");
+
 const micBtn = document.getElementById("mute-audio");
 const cameraBtn = document.getElementById("mute-video");
 const callBtn = document.getElementById("end-call");
-const userVideo1 = document.getElementById("user-1");
 const shareScreenBtn = document.getElementById("share-screen");
-const roomNameSection = document.getElementById("RoomName-section");
-const currentRoomHeader = document.getElementById("curr-room");
+
+const userVideo1 = document.getElementById("user-1");
+const userVideo2 = document.getElementById("user-2");
+const shareScreenVideo = document.getElementById("screen-share");
 
 const socket = new WebSocket("ws://localhost:8080");
 const rtcServers = {
@@ -22,19 +29,23 @@ const rtcServers = {
 };
 
 let isInitialized = false;
-const roomNameInput = document.getElementById("room-name-input");
-const roomNameBtn = document.getElementById("room-name-btn");
-
 let room = null;
 let queuedIceCandidates = [];
 
-roomNameBtn.addEventListener("click", () => {
-  room = roomNameInput.value;
-  roomNameInput.value = "";
-  roomNameSection.style.display = "none";
-  currentRoomHeader.innerText = `Room: ${room}`;
-  joinRoom(room);
+roomNameBtn.addEventListener("click", joinRoomHandler);
+roomNameInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") joinRoomHandler();
 });
+
+function joinRoomHandler() {
+  room = roomNameInput.value.trim();
+  if (!room) return;
+
+  currentRoom.textContent = room;
+  roomEntry.style.display = "none";
+  conference.classList.add("active");
+  joinRoom(room);
+}
 
 function joinRoom(room) {
   if (!room) {
@@ -114,6 +125,7 @@ socket.onclose = () => {
   console.log("WebSocket connection closed");
 };
 
+// WebRTC Functions
 async function processQueuedIceCandidates() {
   for (const candidateData of queuedIceCandidates) {
     try {
@@ -141,8 +153,6 @@ function sendSignal(type, data) {
   }
 }
 
-const shareScreenVideo = document.getElementById("screen-share");
-
 async function initCall(isCaller) {
   try {
     if (isInitialized) {
@@ -156,19 +166,19 @@ async function initCall(isCaller) {
     console.log("Getting user media...");
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
-      audio: false,
+      audio: true,
     });
 
     if (userVideo1) {
       userVideo1.srcObject = localStream;
       userVideo1.muted = true;
+      document.getElementById("placeholder-1").style.display = "none";
     }
 
     console.log("Creating peer connection...");
     peerConnection = new RTCPeerConnection(rtcServers);
     remoteStream = new MediaStream();
 
-    const userVideo2 = document.getElementById("user-2");
     if (userVideo2) {
       userVideo2.srcObject = remoteStream;
       userVideo2.muted = true;
@@ -180,41 +190,25 @@ async function initCall(isCaller) {
       console.log(`Added ${track.kind} track`);
     });
 
-    // Replace your existing peerConnection.ontrack handler with this:
     peerConnection.ontrack = (evt) => {
       console.log("Received remote track:", evt.track.kind);
-      const userVideo2 = document.getElementById("user-2");
-      const shareScreenVideo = document.getElementById("screen-share");
 
       if (evt.streams[0]) {
-        // Check if this is likely a screen share based on track constraints
         const videoTrack = evt.streams[0].getVideoTracks()[0];
 
         if (videoTrack) {
           const settings = videoTrack.getSettings();
 
-          // Screen shares typically have larger dimensions
           if (settings.width >= 1920 || settings.height >= 1080) {
-            // This is likely a screen share - show in screen-share video
             if (shareScreenVideo) {
               shareScreenVideo.srcObject = evt.streams[0];
-              shareScreenVideo.style.display = "block";
-            }
-
-            // Keep camera feed in user-2 if available, or hide it
-            if (userVideo2) {
-              userVideo2.style.display = "none";
+              document.getElementById("screen-placeholder").style.display =
+                "none";
             }
           } else {
-            // This is regular camera feed
             if (userVideo2) {
               userVideo2.srcObject = evt.streams[0];
-              userVideo2.style.display = "block";
-            }
-
-            // Hide screen share video if it was showing
-            if (shareScreenVideo) {
-              shareScreenVideo.style.display = "none";
+              document.getElementById("placeholder-2").style.display = "none";
             }
           }
         }
@@ -245,6 +239,7 @@ async function initCall(isCaller) {
       sendSignal("offer", offer);
       console.log("Offer sent");
     }
+
     setupControls();
   } catch (error) {
     console.error("Error initializing call:", error);
@@ -268,102 +263,148 @@ const toggleAudio = () => {
     audioTrack.enabled = !audioTrack.enabled;
     isAudioMuted = !audioTrack.enabled;
 
-    micBtn.textContent = isAudioMuted ? "Unmute Audio" : "Mute Audio";
-    micBtn.classList.toggle("muted", isAudioMuted);
+    micBtn.textContent = isAudioMuted ? "🎤 Unmute Audio" : "🎤 Mute Audio";
+    micBtn.className = `control-btn ${isAudioMuted ? "active" : "secondary"}`;
   }
 };
 
 const toggleVideo = () => {
-  console.log("Get video Tracks", localStream.getVideoTracks());
   const videoTrack = localStream.getVideoTracks()[0];
   if (videoTrack) {
     videoTrack.enabled = !videoTrack.enabled;
     isVideoMuted = !videoTrack.enabled;
 
-    cameraBtn.textContent = isVideoMuted ? "Open Camera" : "Close Camera";
-    cameraBtn.classList.toggle("muted", isVideoMuted);
+    cameraBtn.textContent = isVideoMuted ? "📹 Turn On Video" : "📹 Mute Video";
+    cameraBtn.className = `control-btn ${
+      isVideoMuted ? "active" : "secondary"
+    }`;
   }
 };
 
+async function startScreenShare() {
+  try {
+    if (isScreenSharing) {
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      const cameraTrack = cameraStream.getVideoTracks()[0];
+      const videoSender = peerConnection
+        .getSenders()
+        .find((sender) => sender.track && sender.track.kind === "video");
+
+      if (videoSender) {
+        await videoSender.replaceTrack(cameraTrack);
+      }
+
+      localStream = cameraStream;
+      if (userVideo1) {
+        userVideo1.srcObject = localStream;
+      }
+
+      document.getElementById("screen-placeholder").style.display = "flex";
+      isScreenSharing = false;
+      shareScreenBtn.textContent = "🖥️ Share Screen";
+      shareScreenBtn.className = "control-btn primary";
+    } else {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      const videoSender = peerConnection
+        .getSenders()
+        .find((sender) => sender.track && sender.track.kind === "video");
+
+      if (videoSender) {
+        await videoSender.replaceTrack(screenTrack);
+      }
+
+      if (shareScreenVideo) {
+        shareScreenVideo.srcObject = screenStream;
+        document.getElementById("screen-placeholder").style.display = "none";
+        shareScreenVideo.style.display = "block";
+        shareScreenVideo.style.width = "100%";
+      }
+
+      isScreenSharing = true;
+      shareScreenBtn.textContent = "🖥️ Stop Sharing";
+      shareScreenBtn.className = "control-btn active";
+
+      screenTrack.onended = async () => {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+
+        const cameraTrack = cameraStream.getVideoTracks()[0];
+        await videoSender.replaceTrack(cameraTrack);
+
+        localStream = cameraStream;
+        if (userVideo1) {
+          userVideo1.srcObject = localStream;
+        }
+
+        document.getElementById("screen-placeholder").style.display = "flex";
+        isScreenSharing = false;
+        shareScreenBtn.textContent = "🖥️ Share Screen";
+        shareScreenBtn.className = "control-btn primary";
+      };
+    }
+  } catch (error) {
+    console.error("Error with screen share:", error);
+    alert("Screen sharing failed: " + error.message);
+  }
+}
+
 const endCall = () => {
-  if (localStream) {
-    localStream.getTracks().forEach((tr) => tr.stop());
-  }
-  if (remoteStream) {
-    remoteStream.getTracks().forEach((tr) => tr.stop());
-  }
-  if (peerConnection) {
-    peerConnection.close();
-  }
+  if (confirm("Are you sure you want to end the call?")) {
+    if (localStream) {
+      localStream.getTracks().forEach((tr) => tr.stop());
+    }
+    if (remoteStream) {
+      remoteStream.getTracks().forEach((tr) => tr.stop());
+    }
+    if (peerConnection) {
+      peerConnection.close();
+    }
 
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.close();
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.close();
+    }
+
+    userVideo1.srcObject = null;
+    userVideo2.srcObject = null;
+    shareScreenVideo.srcObject = null;
+
+    document.getElementById("placeholder-1").style.display = "flex";
+    document.getElementById("placeholder-2").style.display = "flex";
+    document.getElementById("screen-placeholder").style.display = "flex";
+
+    isInitialized = false;
+    queuedIceCandidates = [];
+    isAudioMuted = false;
+    isVideoMuted = false;
+    isScreenSharing = false;
+
+    conference.classList.remove("active");
+    roomEntry.style.display = "block";
+    roomNameInput.value = "";
+
+    micBtn.textContent = "🎤 Mute Audio";
+    micBtn.className = "control-btn secondary";
+    cameraBtn.textContent = "📹 Mute Video";
+    cameraBtn.className = "control-btn secondary";
+    shareScreenBtn.textContent = "🖥️ Share Screen";
+    shareScreenBtn.className = "control-btn primary";
   }
-
-  document.getElementById("user-1").srcObject = null;
-  document.getElementById("user-2").srcObject = null;
-
-  isInitialized = false;
-  queuedIceCandidates = [];
 };
 
 function setupControls() {
   micBtn.addEventListener("click", toggleAudio);
   cameraBtn.addEventListener("click", toggleVideo);
   callBtn.addEventListener("click", endCall);
-}
-async function startScreenShare() {
-  try {
-    // Get screen share stream
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: false,
-    });
-
-    const screenTrack = screenStream.getVideoTracks()[0];
-
-    const videoSender = peerConnection
-      .getSenders()
-      .find((sender) => sender.track && sender.track.kind === "video");
-
-    if (videoSender) {
-      await videoSender.replaceTrack(screenTrack);
-
-      const shareScreenVideo = document.getElementById("screen-share");
-      if (shareScreenVideo) {
-        shareScreenVideo.srcObject = screenStream;
-        shareScreenVideo.style.display = "block";
-      }
-
-      isScreenSharing = true;
-
-      screenTrack.onended = async () => {
-        const cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-
-        const cameraTrack = cameraStream.getVideoTracks()[0];
-
-        await videoSender.replaceTrack(cameraTrack);
-
-        localStream = cameraStream;
-
-        const userVideo1 = document.getElementById("user-1");
-        if (userVideo1) {
-          userVideo1.srcObject = localStream;
-        }
-
-        if (shareScreenVideo) {
-          shareScreenVideo.srcObject = null;
-          shareScreenVideo.style.display = "none";
-        }
-
-        isScreenSharing = false;
-      };
-    }
-  } catch (error) {
-    console.error("Error starting screen share:", error);
-    alert("Screen sharing failed: " + error.message);
-  }
+  shareScreenBtn.addEventListener("click", startScreenShare);
 }

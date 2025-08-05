@@ -108,12 +108,4 @@ wss.on("connection", (ws) => {
   });
 });
 
-process.on("SIGINT", () => {
-  console.log("Shutting down server...");
-  wss.close(() => {
-    console.log("Server closed");
-    process.exit(0);
-  });
-});
-
 console.log("WebSocket signaling server running on ws://localhost:8080");
