@@ -45,3 +45,8 @@ A comprehensive WebRTC implementation demonstrating peer-to-peer video communica
 1. **Step 1**: Peer 1 creates an SDP offer and copies it
 2. **Step 2**: Peer 2 pastes the offer, creates an SDP answer, and copies it
 3. **Step 3**: Peer 1 pastes the answer to establish the connection
+
+## Resources
+
+- [WebRTC Crash Course](https://www.youtube.com/watch?v=FExZvpVvYxA)
+- [Getting Started with WebRTC: A Practical Guide with Example Code](https://medium.com/@fengliu_367/getting-started-with-webrtc-a-practical-guide-with-example-code-b0f60efdd0a7)
